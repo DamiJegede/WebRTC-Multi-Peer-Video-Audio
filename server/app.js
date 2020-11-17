@@ -1,5 +1,4 @@
-var express = require('express')
-  , routes = require('./routes');
+var express = require('express');
 
 var app = module.exports = express.createServer();
 
@@ -12,13 +11,13 @@ io.on('connection', function(socket){
 		io.to(toId).emit('signal', socket.id, message);
   	});
 
-    socket.on("message", function(data){
+	socket.on("message", function(data){
 		io.sockets.emit("broadcast-message", socket.id, data);
-    })
+	});
 
 	socket.on('disconnect', function() {
 		io.sockets.emit("user-left", socket.id);
-	})
+	});
 });
 
 app.listen(3000, function(){
