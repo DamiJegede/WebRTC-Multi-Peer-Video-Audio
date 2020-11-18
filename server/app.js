@@ -1,25 +1,51 @@
-var express = require('express');
+const ws = require('websocket').server;
+const http = require('http');
 
-var app = module.exports = express.createServer();
-
-var io = require('socket.io')(app);
-
-io.on('connection', function(socket){
-	io.sockets.emit("user-joined", socket.id, io.engine.clientsCount, Object.keys(io.sockets.clients().sockets));
-
-	socket.on('signal', (toId, message) => {
-		io.to(toId).emit('signal', socket.id, message);
-  	});
-
-	socket.on("message", function(data){
-		io.sockets.emit("broadcast-message", socket.id, data);
-	});
-
-	socket.on('disconnect', function() {
-		io.sockets.emit("user-left", socket.id);
-	});
+var server = http.createServer(function(request, response) {
+	console.log((new Date()) + ' Received request for ' + request.url);
+	response.writeHead(404);
+	response.end();
+});
+server.listen(9890, function() {
+	console.log((new Date()) + ' Server is listening on port 9890');
 });
 
-app.listen(3000, function(){
-	console.log("Express server listening on port %d in %s mode", app.address().port, app.settings.env);
+wsServer = new ws({
+	httpServer: server,
+	// You should not use autoAcceptConnections for production
+	// applications, as it defeats all standard cross-origin protection
+	// facilities built into the protocol and the browser.  You should
+	// *always* verify the connection's origin and decide whether or not
+	// to accept it.
+	autoAcceptConnections: true
+});
+
+function originIsAllowed(origin) {
+	// put logic here to detect whether the specified origin is allowed.
+	return true;
+}
+
+wsServer.on('request', function(request) {
+	if (!originIsAllowed(request.origin)) {
+		// Make sure we only accept requests from an allowed origin
+		request.reject();
+		console.log((new Date()) + ' Connection from origin ' + request.origin + ' rejected.');
+		return;
+	}
+	
+	var connection = request.accept('echo-protocol', request.origin);
+	console.log((new Date()) + ' Connection accepted.');
+	connection.on('message', function(message) {
+		if (message.type === 'utf8') {
+				console.log('Received Message: ' + message.utf8Data);
+				connection.sendUTF(message.utf8Data);
+		}
+		else if (message.type === 'binary') {
+				console.log('Received Binary Message of ' + message.binaryData.length + ' bytes');
+				connection.sendBytes(message.binaryData);
+		}
+	});
+	connection.on('close', function(reasonCode, description) {
+		console.log((new Date()) + ' Peer ' + connection.remoteAddress + ' disconnected.');
+	});
 });

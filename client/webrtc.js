@@ -22,15 +22,22 @@ function pageReady() {
         audio: false,
     };
 
+    console.log("READY");
+
     if(navigator.mediaDevices.getUserMedia) {
+        console.log("USER MEDIA... constraint?");
         navigator.mediaDevices.getUserMedia(constraints)
             .then(getUserMediaSuccess)
             .then(function(){
 
-                socket = io.connect(config.host, {secure: true});
+                console.log("CONNECTING... to", config.host)
+
+                socket = io(config.host, {secure: true});
                 socket.on('signal', gotMessageFromServer);    
 
-                socket.on('connect', function(){
+                socket.on('connect', function() {
+
+                    console.log("Connected to host.")
 
                     socketId = socket.id;
 
@@ -84,7 +91,14 @@ function pageReady() {
 
 function getUserMediaSuccess(stream) {
     localStream = stream;
-    localVideo.src = window.URL.createObjectURL(stream);
+    //console.log(stream);
+    if ('srcObject' in localVideo) {
+        console.log("ADDED OBJ")
+        localVideo.srcObject = localStream;
+    } else {
+        console.log("ADDED SRC")
+        localVideo.src = URL.createObjectURL(localStream);
+    }
 }
 
 function gotRemoteStream(event, id) {
