@@ -1,7 +1,8 @@
 var localVideo;
-var firstPerson = false;
-var socketCount = 0;
-var socketId;
+var sessionID;
+var username = "Damilola Jegede";
+var token = "67d62d8d-68b1-4a1d-82db-c89f80f51ddf";
+var role; //USER, AGENT
 var localStream;
 var connections = [];
 
@@ -12,84 +13,7 @@ var peerConnectionConfig = {
     ]
 };
 
-function pageReady() {
-
-    localVideo = document.getElementById('localVideo');
-    remoteVideo = document.getElementById('remoteVideo');
-
-    var constraints = {
-        video: true,
-        audio: false,
-    };
-
-    console.log("READY");
-
-    if(navigator.mediaDevices.getUserMedia) {
-        console.log("USER MEDIA... constraint?");
-        navigator.mediaDevices.getUserMedia(constraints)
-            .then(getUserMediaSuccess)
-            .then(function(){
-
-                console.log("CONNECTING... to", config.host)
-
-                socket = io(config.host, {secure: true});
-                socket.on('signal', gotMessageFromServer);    
-
-                socket.on('connect', function() {
-
-                    console.log("Connected to host.")
-
-                    socketId = socket.id;
-
-                    socket.on('user-left', function(id){
-                        var video = document.querySelector('[data-socket="'+ id +'"]');
-                        var parentDiv = video.parentElement;
-                        video.parentElement.parentElement.removeChild(parentDiv);
-                    });
-
-
-                    socket.on('user-joined', function(id, count, clients){
-                        clients.forEach(function(socketListId) {
-                            if(!connections[socketListId]){
-                                connections[socketListId] = new RTCPeerConnection(peerConnectionConfig);
-                                //Wait for their ice candidate       
-                                connections[socketListId].onicecandidate = function(){
-                                    if(event.candidate != null) {
-                                        console.log('SENDING ICE');
-                                        socket.emit('signal', socketListId, JSON.stringify({'ice': event.candidate}));
-                                    }
-                                }
-
-                                //Wait for their video stream
-                                connections[socketListId].onaddstream = function(){
-                                    gotRemoteStream(event, socketListId)
-                                }    
-
-                                //Add the local video stream
-                                connections[socketListId].addStream(localStream);                                                                
-                            }
-                        });
-
-                        //Create an offer to connect with your local description
-                        
-                        if(count >= 2){
-                            connections[id].createOffer().then(function(description){
-                                connections[id].setLocalDescription(description).then(function() {
-                                    // console.log(connections);
-                                    socket.emit('signal', id, JSON.stringify({'sdp': connections[id].localDescription}));
-                                }).catch(e => console.log(e));        
-                            });
-                        }
-                    });                    
-                })       
-        
-            }); 
-    } else {
-        alert('Your browser does not support getUserMedia API');
-    } 
-}
-
-function getUserMediaSuccess(stream) {
+function getUserMediaSuccess (stream) {
     localStream = stream;
     //console.log(stream);
     if ('srcObject' in localVideo) {
@@ -101,44 +25,91 @@ function getUserMediaSuccess(stream) {
     }
 }
 
-function gotRemoteStream(event, id) {
+var VideoBanking = {
+    socket: null,
+    role: null,
 
-    var videos = document.querySelectorAll('video'),
-        video  = document.createElement('video'),
-        div    = document.createElement('div')
+    username: null,
+    token: null,
+    sessionID: null,
 
-    video.setAttribute('data-socket', id);
-    video.src         = window.URL.createObjectURL(event.stream);
-    video.autoplay    = true; 
-    video.muted       = true;
-    video.playsinline = true;
+    localStream: null,
+    localVideo: null,
+    remoteVideo: null,
+
+    setup: () => {
+        var _this = VideoBanking;
+
+        _this.localVideo = document.getElementById('localVideo');
+        _this.remoteVideo = document.getElementById('remoteVideo');
+
+        if (navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                .then(getUserMediaSuccess)
+                .then(() => {
     
-    div.appendChild(video);      
-    document.querySelector('.videos').appendChild(div);      
-}
-
-function gotMessageFromServer(fromId, message) {
-
-    //Parse the incoming signal
-    var signal = JSON.parse(message)
-
-    //Make sure it's not coming from yourself
-    if(fromId != socketId) {
-
-        if(signal.sdp){            
-            connections[fromId].setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(function() {                
-                if(signal.sdp.type == 'offer') {
-                    connections[fromId].createAnswer().then(function(description){
-                        connections[fromId].setLocalDescription(description).then(function() {
-                            socket.emit('signal', fromId, JSON.stringify({'sdp': connections[fromId].localDescription}));
-                        }).catch(e => console.log(e));        
-                    }).catch(e => console.log(e));
-                }
-            }).catch(e => console.log(e));
-        }
+                    console.log("Connecting to", config.host);
     
-        if(signal.ice) {
-            connections[fromId].addIceCandidate(new RTCIceCandidate(signal.ice)).catch(e => console.log(e));
-        }                
-    }
+                    _this.socket = new WebSocket(config.host, 'echo-protocol');
+                    _this.socket.addEventListener('error', (e) => {
+                        console.log("Error", e);
+                    });
+    
+                    // Connection opened
+                    _this.socket.addEventListener('open', function (event) {
+                        console.log("Connected to host.", event);
+                    });
+    
+                    _this.socket.addEventListener('close', (e) => { console.log("Closed", e) })
+    
+                    // Listen for messages
+                    _this.socket.addEventListener('message', function (event) {
+                        var payload = JSON.parse(event.data);
+    
+                        switch (payload.status) {
+                            //Check for login
+                            case "CONNECTED":
+                                //Get SessionID and Report my name
+                                _this.sessionID = payload.sessionID;
+                                _this.socket.send(JSON.stringify({
+                                    status: "LOGIN",
+                                    sessionID: _this.sessionID,
+                                    name: _this.username,
+                                    token: _this.token
+                                }));
+    
+                            case "INCOMING":
+                                //Logic for incoming calls here
+                        }
+                    });
+    
+                    
+                });
+        } else {
+            alert("Your browser does not support Video Banking.");
+        } 
+    },
+
+    startCall: () => {
+        VideoBanking.role = "USER";
+        
+
+    var constraints = {
+        video: true,
+        audio: false,
+    };
+
+    console.log("READY");
+        //Send call request to socket server and start local video
+    },
+
+    answerCall: () => {
+        VideoBanking.role = "AGENT";
+    },
+
+    endCall: () => {},
+
+    muteCall: () => {},
+
+    rateCall: (rating) => {}
 }
