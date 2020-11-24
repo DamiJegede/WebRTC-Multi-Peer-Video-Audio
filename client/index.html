@@ -8,8 +8,12 @@
     <body style="background-color: black;">
         <div class="videos">
             <div>
-                <video id="localVideo" src="" autoplay muted playsinline ></video>
+                <video id="localVideo" src="" autoplay muted playsinline></video>
+                <video id="remoteVideo" src="" autoplay muted playsinline></video>
                 <!-- <div class="soundbar"><span class="currentVolume"></span></div> -->
+                <div style="color: white; cursor: pointer;">
+                    <span onclick="startUser()">Launch User</span> • <span onclick="startAgent()">Launch Agent</span>
+                </div>
             </div>
         </div>
         
@@ -21,7 +25,13 @@
         <script src="VBank.js"></script>
 
         <script type="text/javascript">
-            VideoBanking.start("2FFF7550-3A5D-46BE-86E6-C13B24A139F5");
+            function startUser() {
+                VideoBanking.start("5AE2CAC9-0982-424B-9E58-58DD8C449ECF", "USER");
+            }
+
+            function startAgent() {
+                VideoBanking.start("28EA8AED-E123-445F-9450-0E926735E31F", "AGENT");
+            }
         </script>
 
     </body>
