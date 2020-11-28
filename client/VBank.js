@@ -15,7 +15,7 @@ var VideoBanking = {
     peerConnection: null,
 
     remoteUsername: null,
-    mediaOptions: { video: { width: 720, height: 720 }, audio: false },
+    mediaOptions: { video: { width: 640, height: 640 }, audio: true },
 
     start: (token) => {
         var _this = VideoBanking;
@@ -55,7 +55,7 @@ var VideoBanking = {
         if ('srcObject' in _this.localVideo) _this.localVideo.srcObject = _this.localStream;
         else _this.localVideo.src = URL.createObjectURL(_this.localStream);
 
-        _this.localStream.getTracks().forEach(track => _this.peerConnection.addTrack(track, stream));
+        _this.localStream.getTracks().forEach(track => _this.peerConnection.addTrack(track, _this.localStream));
     },
 
     connectToWebSocket: () => {
@@ -193,7 +193,7 @@ var VideoBanking = {
         _this.peerConnection.oniceconnectionstatechange = () => {
             console.log("ICE State:", _this.peerConnection.iceConnectionState)
             switch(_this.peerConnection.iceConnectionState) {
-                case "closed":
+                case "disconnected":
                 case "failed":
                     _this.callEnded();
                     break;
