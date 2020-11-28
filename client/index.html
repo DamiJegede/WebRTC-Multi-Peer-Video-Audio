@@ -7,14 +7,11 @@
 
     <body style="background-color: black;">
         <div class="videos">
-            <div>
-                <video id="localVideo" src="" autoplay muted playsinline></video>
-                <video id="remoteVideo" src="" autoplay muted playsinline></video>
-                <!-- <div class="soundbar"><span class="currentVolume"></span></div> -->
-                <div style="color: white; cursor: pointer;">
-                    <span onclick="startUser()">Launch User</span> • <span onclick="startAgent()">Launch Agent</span>
-                </div>
-            </div>
+            <div><video id="localVideo" src="" autoplay muted playsinline></video></div>
+            <div><video id="remoteVideo" src="" autoplay muted playsinline></video></div>
+        </div>
+        <div style="color: white; cursor: pointer;">
+            <span onclick="startUser()">Launch User</span> • <span onclick="startAgent()">Launch Agent</span>
         </div>
         
         <br />
@@ -26,11 +23,11 @@
 
         <script type="text/javascript">
             function startUser() {
-                VideoBanking.start("5AE2CAC9-0982-424B-9E58-58DD8C449ECF", "USER");
+                VideoBanking.start("98DF5BA0-54A8-499E-907E-D7CB36DEBA61");
             }
 
             function startAgent() {
-                VideoBanking.start("28EA8AED-E123-445F-9450-0E926735E31F", "AGENT");
+                VideoBanking.start("F49176A7-BDE5-449D-B099-1C1765991569");
             }
         </script>
 

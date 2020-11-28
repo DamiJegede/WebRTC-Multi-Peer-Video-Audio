@@ -1,8 +1,3 @@
-var localVideo;
-var sessionID;
-var role; //USER, AGENT
-var localStream;
-
 var VideoBanking = {
     socket: null,
     role: null,
@@ -10,6 +5,7 @@ var VideoBanking = {
     username: null,
     token: null,
     sessionID: null,
+    remoteSessionID: null,
     token: null,
     isConnected: false,
 
@@ -18,21 +14,21 @@ var VideoBanking = {
     remoteVideo: null,
     peerConnection: null,
 
-    start: (token, role) => {
-        var _this = VideoBanking;
+    remoteUsername: null,
+    mediaOptions: { video: { width: 720, height: 720 }, audio: false },
 
-        _this.role = role;
+    start: (token) => {
+        var _this = VideoBanking;
 
         _this.token = token;
         _this.localVideo = document.getElementById('localVideo');
         _this.remoteVideo = document.getElementById('remoteVideo');
 
-        if (role === "USER") _this.createConnection();
+        _this.connectToWebSocket();
 
         if (navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { width: 720, height: 720 }, audio: false })
+            navigator.mediaDevices.getUserMedia(_this.mediaOptions)
                 .then(_this.onGetLocalMedia)
-                .then(_this.onMediaReady)
                 .catch(_this.onMediaError);
         } else {
             alert("Your browser does not support Video Banking.");
@@ -94,20 +90,66 @@ var VideoBanking = {
                     _this.socket.send(JSON.stringify({
                         status: "LOGIN",
                         sessionID: _this.sessionID,
-                        token: _this.token,
-                        role: _this.role
+                        token: _this.token
                     }));
                     break;
 
                 case "LOGIN_SUCCESS":
                     _this.username = payload.name;
-                    console.log(_this.username);
+                    _this.role = payload.role;
+
+                    _this.createConnection();
+
+                    //Simulate call to signal server if USER
+                    if (_this.role === "USER") {
+                        _this.socket.send(JSON.stringify({
+                            name: _this.username,
+                            status: "REQUEST_AGENT"
+                        }));
+                    }
 
                     break;
 
-                case "INCOMING_CALL":
-                    //Logic for incoming calls here
+                case "NEW_CANDIDATE":
+                    console.log("NEW CANDIDATE FOUND");
+                    var candidate = new RTCIceCandidate(payload.candidate);
+                    _this.peerConnection.addIceCandidate(candidate)
+                    .catch(_this.handleError);
+                    break;
 
+                case "INCOMING_CALL":
+                    _this.remoteSessionID = payload.remoteSessionID;
+                    _this.remoteUsername = payload.name;
+                    _this.connectAgent(payload.sdp);
+                    break;
+
+                //Agent assigned. Start video connection
+                case "AGENT_ASSIGNED":
+                    _this.remoteSessionID = payload.remoteSessionID;
+                    _this.remoteUsername = payload.name;
+
+                    //Make Video Call
+                    _this.peerConnection.createOffer().then((offer) => {
+                        console.log("Offer created");
+                        _this.peerConnection.setLocalDescription(offer);
+
+                        //Send Video call handshake
+                        _this.socket.send(JSON.stringify({
+                            status: "INCOMING_CALL",
+                            remoteSessionID: _this.remoteSessionID,
+                            name: _this.username,
+                            sdp: offer
+                        }));
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+                    break;
+
+                case "VIDEO_HANDSHAKE":
+                    console.log("HANDSHAKE", payload.sdp);
+                    var desc = new RTCSessionDescription(payload.sdp);
+                    _this.peerConnection.setRemoteDescription(desc);
                     break;
             }
         });
@@ -128,48 +170,28 @@ var VideoBanking = {
         var _this = VideoBanking;
         console.log("Creating connection...");
 
-        _this.connectToWebSocket();
-
         _this.peerConnection = new RTCPeerConnection({ 'iceServers': [ {'urls': 'stun:stun.stunprotocol.org' } ] });
         _this.peerConnection.onicecandidateerror = (event) => { console.log (event) };
 
         _this.peerConnection.onicecandidate = (event) => {
-            console.log(event);
             if (event.candidate) {
                 _this.socket.send(JSON.stringify({
-                    sessionID: _this.sessionID,
                     status: "NEW_CANDIDATE",
+                    remoteSessionID: _this.remoteSessionID,
                     candidate: event.candidate
                 }));
             }
         };
 
         _this.peerConnection.ontrack = (event) => {
-            console.log("Tracking...");
-            _this.remoteVideo.srcObject = event.streams[0];
-        };
-
-        _this.peerConnection.onnegotiationneeded = () => {
-            console.log("NEGOTIATION NEEDED");
-            _this.peerConnection.createOffer().then((offer) => {
-                console.log("Offer created");
-                return _this.peerConnection.setLocalDescription(offer);
-            })
-            .then(() => {
-                //Send call to signal server
-                _this.socket.send(JSON.stringify({
-                    sessionID: _this.sessionID,
-                    status: "CALLING",
-                    sdp: _this.peerConnection.localDescription
-                }));
-            })
-            .catch((error) => {
-                console.log(error);
-            });
+            if (_this.remoteVideo.srcObject !== event.streams[0]) {
+                console.log("Streaming:", event.streams[0]);
+                _this.remoteVideo.srcObject = event.streams[0];
+            }
         };
 
         _this.peerConnection.oniceconnectionstatechange = () => {
-            console.log("HERE")
+            console.log("ICE State:", _this.peerConnection.iceConnectionState)
             switch(_this.peerConnection.iceConnectionState) {
                 case "closed":
                 case "failed":
@@ -179,12 +201,34 @@ var VideoBanking = {
         };
 
         _this.peerConnection.onsignalingstatechange = () => {
-            console.log("HERE")
+            console.log("Signal State:", _this.peerConnection.signalingState);
             switch(_this.peerConnection.signalingState) {
                 case "closed":
-                    closeVideoCall();
+                   //closeVideoCall();
                     break;
             }
         };
     },
+
+    connectAgent: async (sdp) => {
+        var _this = VideoBanking;
+        console.log("Answering Call:", sdp);
+
+        var desc = new RTCSessionDescription(sdp);
+        _this.peerConnection.setRemoteDescription(desc);
+
+        _this.peerConnection.createAnswer().then((answer) => {
+            console.log("Answer Created", answer);
+            _this.peerConnection.setLocalDescription(answer);
+            _this.socket.send(JSON.stringify({
+                status: "VIDEO_HANDSHAKE",
+                remoteSessionID: _this.remoteSessionID,
+                sdp: answer
+            }));
+        });
+    },
+
+    handleError: (error) => {
+        console.log(error);
+    }
 }
